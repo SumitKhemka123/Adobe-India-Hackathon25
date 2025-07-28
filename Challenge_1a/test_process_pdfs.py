@@ -2,9 +2,11 @@ import fitz
 import os
 import json
 import re
+from collections import defaultdict
 
-INPUT_DIR = "/app/input"
-OUTPUT_DIR = "/app/output"
+# For testing - use local paths
+INPUT_DIR = "sample_dataset/pdfs"
+OUTPUT_DIR = "test_output_final"
 
 def extract_title_from_pdf(pdf_path):
     """
@@ -95,6 +97,74 @@ def extract_title_from_pdf(pdf_path):
     
     doc.close()
     return "Untitled Document"
+
+def detect_heading_levels(spans_data):
+    """
+    Analyze font sizes and formatting to determine heading levels.
+    """
+    # Collect all font sizes
+    font_sizes = []
+    for span_info in spans_data:
+        if span_info["font_size"]:
+            font_sizes.append(span_info["font_size"])
+    
+    if not font_sizes:
+        return {}
+    
+    # Get unique font sizes sorted in descending order
+    unique_sizes = sorted(set(font_sizes), reverse=True)
+    
+    # Map font sizes to heading levels
+    level_mapping = {}
+    for i, size in enumerate(unique_sizes[:6]):  # Max 6 heading levels
+        if i == 0:
+            level_mapping[size] = "H1"
+        elif i == 1:
+            level_mapping[size] = "H2" 
+        elif i == 2:
+            level_mapping[size] = "H3"
+        elif i == 3:
+            level_mapping[size] = "H4"
+        elif i == 4:
+            level_mapping[size] = "H5"
+        else:
+            level_mapping[size] = "H6"
+    
+    return level_mapping
+
+def is_likely_heading(text, font_size, is_bold, level_mapping):
+    """
+    Determine if a text span is likely a heading based on various criteria.
+    """
+    # Check if font size corresponds to a heading level
+    if font_size in level_mapping:
+        # Additional criteria for headings
+        text = text.strip()
+        
+        # Length criteria (headings are usually shorter)
+        if len(text) > 200:
+            return False
+            
+        # Pattern matching for common heading patterns
+        heading_patterns = [
+            r'^\d+\.?\s+',  # Numbered headings (1. , 2.1 )
+            r'^[A-Z][a-z]+',  # Capitalized words
+            r'^[A-Z\s]+$',  # All caps
+            r'^(Chapter|Section|Part|Appendix)',  # Common heading words
+        ]
+        
+        for pattern in heading_patterns:
+            if re.match(pattern, text):
+                return True
+                
+        # If bold and reasonable length, likely a heading
+        if is_bold and 5 <= len(text) <= 100:
+            return True
+            
+        # If font size is significantly larger than body text
+        return True
+    
+    return False
 
 def extract_outline_from_pdf(pdf_path):
     """
