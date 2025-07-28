@@ -1,53 +1,180 @@
-# Challenge 1a: PDF Processing Solution
+# Challenge 1A: PDF Structure Extraction Solution
 
 ## Overview
-This is a **sample solution** for Challenge 1a of the Adobe India Hackathon 2025. The challenge requires implementing a PDF processing solution that extracts structured data from PDF documents and outputs JSON files. The solution must be containerized using Docker and meet specific performance and resource constraints.
+This solution processes PDF documents to extract their title and hierarchical outline structure, outputting the results in a structured JSON format. The system is designed to work efficiently on CPU-only environments with strict performance constraints.
 
-## Official Challenge Guidelines
+## Approach
 
-### Submission Requirements
-- **GitHub Project**: Complete code repository with working solution
-- **Dockerfile**: Must be present in the root directory and functional
-- **README.md**:  Documentation explaining the solution, models, and libraries used
+### 1. Title Extraction Strategy
+The solution employs a multi-layered approach for title extraction:
 
-### Build Command
-```bash
-docker build --platform linux/amd64 -t <reponame.someidentifier> .
-```
+1. **Primary Method**: Extract title from PDF metadata (`doc.metadata["title"]`)
+2. **Fallback Method**: Analyze the first page content:
+   - Extract text blocks with font size and positioning information
+   - Identify the largest/most prominent text elements
+   - Select the most likely title candidate based on position and size
 
-### Run Command
-```bash
-docker run --rm -v $(pwd)/input:/app/input:ro -v $(pwd)/output/repoidentifier/:/app/output --network none <reponame.someidentifier>
-```
+### 2. Outline Generation Strategy
+The outline extraction uses a hierarchical approach:
 
-### Critical Constraints
-- **Execution Time**: ≤ 10 seconds for a 50-page PDF
-- **Model Size**: ≤ 200MB (if using ML models)
-- **Network**: No internet access allowed during runtime execution
-- **Runtime**: Must run on CPU (amd64) with 8 CPUs and 16 GB RAM
-- **Architecture**: Must work on AMD64, not ARM-specific
+1. **Primary Method**: Extract from PDF bookmarks/Table of Contents if available
+2. **Fallback Method**: Font-based analysis:
+   - Analyze font sizes across all pages
+   - Map font sizes to heading levels (H1, H2, H3, etc.)
+   - Apply heuristics to identify likely headings:
+     - Font size significance
+     - Bold formatting
+     - Text length constraints
+     - Pattern matching for numbered sections
 
-### Key Requirements
-- **Automatic Processing**: Process all PDFs from `/app/input` directory
-- **Output Format**: Generate `filename.json` for each `filename.pdf`
-- **Input Directory**: Read-only access only
-- **Open Source**: All libraries, models, and tools must be open source
-- **Cross-Platform**: Test on both simple and complex PDFs
+### 3. Smart Heading Detection
+The system uses multiple criteria to identify headings:
+- **Font Size Analysis**: Larger fonts typically indicate higher-level headings
+- **Formatting Detection**: Bold text is often used for headings
+- **Pattern Recognition**: Numbered sections (1., 2.1, Chapter, Section, etc.)
+- **Length Constraints**: Headings are typically shorter than body text
+- **Position Analysis**: Headings often appear at specific page positions
 
-## Sample Solution Structure
+## Libraries and Dependencies
+
+### Core Libraries
+- **PyMuPDF (fitz) v1.23.14**: 
+  - Primary PDF processing library
+  - Lightweight and efficient for text extraction
+  - Provides font, formatting, and positioning information
+  - Size: ~20MB (well under 200MB constraint)
+  - No GPU dependencies, pure CPU implementation
+
+### Standard Libraries
+- **json**: JSON output formatting
+- **os**: File system operations
+- **re**: Regular expression pattern matching
+- **collections.defaultdict**: Data structure optimization
+
+## Performance Optimizations
+
+1. **Efficient Text Processing**: Uses PyMuPDF's optimized text extraction
+2. **Smart Fallbacks**: Prioritizes faster methods (bookmarks) before font analysis
+3. **Memory Management**: Proper document cleanup and resource management
+
+## Docker Configuration
+
+The solution is containerized using a Python 3.10 base image with linux/amd64 platform specification:
+
+- **Base Image**: `python:3.10` (AMD64 compatible)
+- **Platform**: Explicitly set to `linux/amd64`
+- **Dependencies**: Only PyMuPDF installed via pip
+- **No Network Access**: Works completely offline
+- **Resource Requirements**: CPU-only, no GPU dependencies
+
+## File Structure
+
 ```
 Challenge_1a/
-├── sample_dataset/
-│   ├── outputs/         # JSON files provided as outputs.
-│   ├── pdfs/            # Input PDF files
-│   └── schema/          # Output schema definition
-│       └── output_schema.json
-├── Dockerfile           # Docker container configuration
-├── process_pdfs.py      # Sample processing script
-└── README.md           # This file
+├── Dockerfile                 # Container configuration
+├── process_pdfs_improved.py  # Main processing script
+├── process_pdfs.py           # Alternative implementation
+├── test_process_pdfs.py      # Testing version
+├── README.md                 # This documentation
+└── sample_dataset/           # Test data and expected outputs
 ```
 
-## Sample Implementation
+## Expected Input/Output
+
+### Input
+- PDF files in `/app/input` directory
+- Any number of PDF documents
+
+### Output
+- JSON files in `/app/output` directory
+- One JSON file per input PDF (filename.pdf → filename.json)
+
+### JSON Schema
+```json
+{
+  "title": "Document Title",
+  "outline": [
+    {
+      "level": "H1|H2|H3|H4|H5|H6",
+      "text": "Heading text",
+      "page": 1
+    }
+  ]
+}
+```
+
+## How to Build and Run
+
+### Building the Docker Image
+```bash
+docker build --platform linux/amd64 -t challenge1a:latest .
+```
+
+### Running the Solution
+```bash
+docker run --rm \
+  -v $(pwd)/input:/app/input \
+  -v $(pwd)/output:/app/output \
+  --network none \
+  challenge1a:latest
+```
+
+### Local Testing (Development)
+```bash
+# Install dependencies
+pip install PyMuPDF==1.23.14
+
+# Run with local paths
+python test_process_pdfs.py
+```
+
+## Performance Characteristics
+
+- **Processing Speed**: Designed to process 50-page PDFs in ≤10 seconds
+- **Memory Usage**: Optimized for 16GB RAM systems
+- **CPU Usage**: Efficiently utilizes 8-core CPU systems
+- **Model Size**: Uses no AI models, only traditional text processing
+- **Network**: Zero network dependencies, works completely offline
+
+## Compliance with Requirements
+
+### Docker Requirements ✅
+- **Platform**: `--platform=linux/amd64` specified in Dockerfile
+- **Architecture**: Compatible with AMD64 (x86_64) CPU
+- **No GPU**: Pure CPU implementation
+- **Model Size**: No models used (0MB < 200MB limit)
+- **Offline**: No network/internet calls
+
+### Expected Execution ✅
+- **Build Command**: `docker build --platform linux/amd64 -t mysolutionname:identifier .`
+- **Run Command**: `docker run --rm -v $(pwd)/input:/app/input -v $(pwd)/output:/app/output --network none mysolutionname:identifier`
+- **Auto Processing**: Processes all PDFs from `/app/input`
+- **Output Format**: Generates `filename.json` for each `filename.pdf`
+
+### Constraints ✅
+- **Execution Time**: ≤10 seconds for 50-page PDF
+- **Model Size**: No models used
+- **Network**: No internet access required
+- **Runtime**: CPU-only on 8 CPUs, 16GB RAM
+
+## Error Handling
+
+The solution includes robust error handling:
+- Graceful fallback when PDF metadata is unavailable
+- Valid JSON output even when processing fails
+- Detailed logging for debugging
+- Handles malformed or corrupted PDFs
+
+## Testing
+
+The solution has been tested with:
+- Various PDF document types
+- Documents with and without bookmarks
+- Different font size distributions
+- Form documents and structured reports
+- Academic papers and technical documents
+
+All test cases produce valid JSON output conforming to the required schema.
 
 ### Current Sample Solution
 The provided `process_pdfs.py` is a **basic sample** that demonstrates:
